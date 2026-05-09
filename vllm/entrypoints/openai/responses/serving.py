@@ -159,6 +159,7 @@ class OpenAIServingResponses(OpenAIServing):
         request_logger: RequestLogger | None,
         chat_template: str | None,
         chat_template_content_format: ChatTemplateContentFormatOption,
+        default_chat_template_kwargs: dict[str, Any] | None = None,
         return_tokens_as_token_ids: bool = False,
         reasoning_parser: str = "",
         enable_auto_tools: bool = False,
@@ -178,6 +179,9 @@ class OpenAIServingResponses(OpenAIServing):
         self.openai_serving_render = openai_serving_render
         self.chat_template = chat_template
         self.chat_template_content_format: Final = chat_template_content_format
+        self.default_chat_template_kwargs: dict[str, Any] = (
+            default_chat_template_kwargs or {}
+        )
         self.enable_log_outputs = enable_log_outputs
 
         # Set up the unified parser - either a unified parser or fall back to
@@ -254,10 +258,16 @@ class OpenAIServingResponses(OpenAIServing):
     def _effective_chat_template_kwargs(
         self, request: ResponsesRequest
     ) -> dict[str, Any]:
-        return request.build_chat_params(
-            self.chat_template,
-            self.chat_template_content_format,
-        ).chat_template_kwargs
+        # Merge server-level defaults with per-request overrides (request wins).
+        # Uses .with_defaults() — identical pattern to OpenAIServingChat.
+        return (
+            request.build_chat_params(
+                self.chat_template,
+                self.chat_template_content_format,
+            )
+            .with_defaults(self.default_chat_template_kwargs or None)
+            .chat_template_kwargs
+        )
 
     def _validate_generator_input(
         self,
@@ -596,7 +606,7 @@ class OpenAIServingResponses(OpenAIServing):
             messages,
             default_template=self.chat_template,
             default_template_content_format=self.chat_template_content_format,
-            default_template_kwargs=None,
+            default_template_kwargs=self.default_chat_template_kwargs,
             tool_dicts=tool_dicts,
             tool_parser=self.parser.tool_parser_cls if self.parser else None,
             reasoning_parser=self.parser.reasoning_parser_cls if self.parser else None,
@@ -621,7 +631,7 @@ class OpenAIServingResponses(OpenAIServing):
             new_messages,
             default_template=chat_template,
             default_template_content_format=chat_template_content_format,
-            default_template_kwargs=None,
+            default_template_kwargs=self.default_chat_template_kwargs,
             tool_dicts=tool_dicts,
             tool_parser=tool_parser,
             reasoning_parser=self.parser.reasoning_parser_cls if self.parser else None,
